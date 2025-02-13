@@ -1,7 +1,7 @@
 package ginSwagger
 
 import (
-	"io/ioutil"
+
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -55,16 +55,29 @@ func TestWrapCustomHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w1.Code)
 	assert.Equal(t, w1.Header()["Content-Type"][0], "text/html; charset=utf-8")
 
+
+	assert.Equal(t, http.StatusInternalServerError, performRequest(http.MethodGet, "/doc.json", router).Code)
+=======
 	assert.Equal(t, http.StatusOK, performRequest(http.MethodGet, "/doc.json", router).Code)
 
 	w2 := performRequest(http.MethodGet, "/doc.json", router)
 	assert.Equal(t, http.StatusOK, w2.Code)
 	assert.Equal(t, w2.Header()["Content-Type"][0], "application/json; charset=utf-8")
 
+
 	// Perform body rendering validation
 	w2Body, err := ioutil.ReadAll(w2.Body)
 	assert.NoError(t, err)
 	assert.Equal(t, doc.ReadDoc(), string(w2Body))
+
+	w2 := performRequest(http.MethodGet, "/doc.json", router)
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.Equal(t, w2.Header()["Content-Type"][0], "application/json; charset=utf-8")
+
+	w3 := performRequest(http.MethodGet, "/favicon-16x16.png", router)
+	assert.Equal(t, http.StatusOK, w3.Code)
+	assert.Equal(t, w3.Header()["Content-Type"][0], "image/png")
+=======
 
 
 
@@ -78,6 +91,9 @@ func TestWrapCustomHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/notfound", router).Code)
 
+	assert.Equal(t, http.StatusMethodNotAllowed, performRequest(http.MethodPost, "/index.html", router).Code)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, performRequest(http.MethodPut, "/index.html", router).Code)
 }
 
 func TestDisablingWrapHandler(t *testing.T) {
@@ -100,10 +116,16 @@ func TestDisablingWrapHandler(t *testing.T) {
 
 	router.GET("/disabling/*any", DisablingWrapHandler(swaggerFiles.Handler, disablingKey))
 
+
+	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/index.html", router).Code)
+	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/doc.json", router).Code)
+	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/oauth2-redirect.html", router).Code)
+	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/notfound", router).Code)
+=======
 	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/index.html", router).Code)
 	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/doc.json", router).Code)
 	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/oauth2-redirect.html", router).Code)
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/notfound", router).Code)
+
 }
 
 func TestDisablingCustomWrapHandler(t *testing.T) {
