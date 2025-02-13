@@ -149,6 +149,32 @@ Demo project tree, `swag init` is run at relative `.`
 ├── go.sum
 └── main.go
 ```
+## Project with Nested Directory
+```
+.
+├── cmd
+│   └── ginsimple
+│       └── main.go
+├── docs
+│   ├── docs.go
+│   ├── swagger.json
+│   └── swagger.yaml
+├── go.mod
+├── go.sum
+└── internal
+    ├── handlers
+    │   ├── helloWorld.go
+    │   └── userHandler.go
+    └── models
+        ├── profile.go
+        └── user.go
+```
+Inorder generate swagger docs for projects with nested directories run the following command
+```bash
+swag init -g ./cmd/ginsimple/main.go -o cmd/docs
+```
+`-o` will set the auto generated file to the specified path
+
 
 ## Multiple APIs
 This feature was introduced in swag v1.7.9
