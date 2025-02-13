@@ -1,4 +1,3 @@
-module github.com/swaggo/gin-swagger
 
 require (
 	github.com/gin-contrib/gzip v0.0.1
@@ -16,3 +15,28 @@ require (
 	golang.org/x/tools v0.0.0-20190611222205-d73e1c7e250b // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 )
+=======
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go: [ '1.17.x', '1.18.x','1.19.x', '1.20.x' ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: Set up Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ matrix.go }}
+      - name: test
+        run: go test -coverprofile=coverage.txt -covermode=atomic
+      - name: coverage
+        run: bash <(curl -s https://codecov.io/bash)
