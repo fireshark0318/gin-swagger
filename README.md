@@ -8,6 +8,7 @@ gin middleware to automatically generate RESTful API documentation with Swagger 
 [![GoDoc](https://godoc.org/github.com/swaggo/gin-swagger?status.svg)](https://godoc.org/github.com/swaggo/gin-swagger)
 [![Release](https://img.shields.io/github/release/swaggo/gin-swagger.svg?style=flat-square)](https://github.com/swaggo/gin-swagger/releases)
 
+
 ## Usage
 
 ### Start using it
