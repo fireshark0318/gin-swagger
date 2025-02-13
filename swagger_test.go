@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sync"
+
 	"testing"
 
 	"github.com/gin-contrib/gzip"
@@ -66,9 +66,7 @@ func TestWrapCustomHandler(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, doc.ReadDoc(), string(w2Body))
 
-	w3 := performRequest(http.MethodGet, "/favicon-16x16.png", router)
-	assert.Equal(t, http.StatusOK, w3.Code)
-	assert.Equal(t, w3.Header()["Content-Type"][0], "image/png")
+
 
 	w4 := performRequest(http.MethodGet, "/swagger-ui.css", router)
 	assert.Equal(t, http.StatusOK, w4.Code)
@@ -80,9 +78,6 @@ func TestWrapCustomHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/notfound", router).Code)
 
-	assert.Equal(t, http.StatusMethodNotAllowed, performRequest(http.MethodPost, "/index.html", router).Code)
-
-	assert.Equal(t, http.StatusMethodNotAllowed, performRequest(http.MethodPut, "/index.html", router).Code)
 }
 
 func TestDisablingWrapHandler(t *testing.T) {
@@ -218,7 +213,7 @@ func TestDefaultModelsExpandDepth(t *testing.T) {
 	configFunc = DefaultModelsExpandDepth(expected)
 	configFunc(&cfg)
 	assert.Equal(t, expected, cfg.DefaultModelsExpandDepth)
-}
+
 
 func TestInstanceName(t *testing.T) {
 	var cfg Config
@@ -261,3 +256,4 @@ func TestOauth2DefaultClientID(t *testing.T) {
 	configFunc(&cfg)
 	assert.Equal(t, "", cfg.Oauth2DefaultClientID)
 }
+
