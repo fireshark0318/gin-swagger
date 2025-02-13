@@ -1,9 +1,11 @@
 package ginSwagger
 
 import (
+
 	"net/http"
 	"net/http/httptest"
 	"os"
+
 	"testing"
 
 	"github.com/gin-contrib/gzip"
@@ -11,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/swaggo/gin-swagger/swaggerFiles"
+	swaggerFiles "github.com/swaggo/files"
 )
 
 type mockedSwag struct{}
@@ -19,6 +21,17 @@ type mockedSwag struct{}
 func (s *mockedSwag) ReadDoc() string {
 	return `{
 }`
+}
+
+var (
+	once sync.Once
+	doc  = &mockedSwag{}
+)
+
+func regDoc() {
+	once.Do(func() {
+		swag.Register(swag.Name, doc)
+	})
 }
 
 func TestWrapHandler(t *testing.T) {
@@ -31,6 +44,8 @@ func TestWrapHandler(t *testing.T) {
 }
 
 func TestWrapCustomHandler(t *testing.T) {
+	regDoc()
+	
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -40,9 +55,20 @@ func TestWrapCustomHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w1.Code)
 	assert.Equal(t, w1.Header()["Content-Type"][0], "text/html; charset=utf-8")
 
-	assert.Equal(t, http.StatusInternalServerError, performRequest(http.MethodGet, "/doc.json", router).Code)
 
-	swag.Register(swag.Name, &mockedSwag{})
+	assert.Equal(t, http.StatusInternalServerError, performRequest(http.MethodGet, "/doc.json", router).Code)
+=======
+	assert.Equal(t, http.StatusOK, performRequest(http.MethodGet, "/doc.json", router).Code)
+
+	w2 := performRequest(http.MethodGet, "/doc.json", router)
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.Equal(t, w2.Header()["Content-Type"][0], "application/json; charset=utf-8")
+
+
+	// Perform body rendering validation
+	w2Body, err := ioutil.ReadAll(w2.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, doc.ReadDoc(), string(w2Body))
 
 	w2 := performRequest(http.MethodGet, "/doc.json", router)
 	assert.Equal(t, http.StatusOK, w2.Code)
@@ -51,6 +77,9 @@ func TestWrapCustomHandler(t *testing.T) {
 	w3 := performRequest(http.MethodGet, "/favicon-16x16.png", router)
 	assert.Equal(t, http.StatusOK, w3.Code)
 	assert.Equal(t, w3.Header()["Content-Type"][0], "image/png")
+=======
+
+
 
 	w4 := performRequest(http.MethodGet, "/swagger-ui.css", router)
 	assert.Equal(t, http.StatusOK, w4.Code)
@@ -68,6 +97,8 @@ func TestWrapCustomHandler(t *testing.T) {
 }
 
 func TestDisablingWrapHandler(t *testing.T) {
+	regDoc()
+
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
@@ -85,10 +116,16 @@ func TestDisablingWrapHandler(t *testing.T) {
 
 	router.GET("/disabling/*any", DisablingWrapHandler(swaggerFiles.Handler, disablingKey))
 
+
 	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/index.html", router).Code)
 	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/doc.json", router).Code)
 	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/oauth2-redirect.html", router).Code)
 	assert.Equal(t, 404, performRequest(http.MethodGet, "/disabling/notfound", router).Code)
+=======
+	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/index.html", router).Code)
+	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/doc.json", router).Code)
+	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/oauth2-redirect.html", router).Code)
+
 }
 
 func TestDisablingCustomWrapHandler(t *testing.T) {
@@ -109,6 +146,8 @@ func TestDisablingCustomWrapHandler(t *testing.T) {
 }
 
 func TestWithGzipMiddleware(t *testing.T) {
+	regDoc()
+
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -196,7 +235,7 @@ func TestDefaultModelsExpandDepth(t *testing.T) {
 	configFunc = DefaultModelsExpandDepth(expected)
 	configFunc(&cfg)
 	assert.Equal(t, expected, cfg.DefaultModelsExpandDepth)
-}
+
 
 func TestInstanceName(t *testing.T) {
 	var cfg Config
@@ -226,3 +265,17 @@ func TestPersistAuthorization(t *testing.T) {
 	configFunc(&cfg)
 	assert.Equal(t, false, cfg.PersistAuthorization)
 }
+
+func TestOauth2DefaultClientID(t *testing.T) {
+	var cfg Config
+	assert.Equal(t, "", cfg.Oauth2DefaultClientID)
+
+	configFunc := Oauth2DefaultClientID("default_client_id")
+	configFunc(&cfg)
+	assert.Equal(t, "default_client_id", cfg.Oauth2DefaultClientID)
+
+	configFunc = Oauth2DefaultClientID("")
+	configFunc(&cfg)
+	assert.Equal(t, "", cfg.Oauth2DefaultClientID)
+}
+
