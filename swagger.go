@@ -1,340 +1,44 @@
-package ginSwagger
-
-import (
-	htmlTemplate "html/template"
-	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
-	"sync"
-	textTemplate "text/template"
-
-	"golang.org/x/net/webdav"
-
-	"github.com/gin-gonic/gin"
-	"github.com/swaggo/swag"
-)
-
-type swaggerConfig struct {
-	URL                      string
-	DocExpansion             string
-	Title                    string
-	Oauth2RedirectURL        htmlTemplate.JS
-	DefaultModelsExpandDepth int
-	DeepLinking              bool
-	PersistAuthorization     bool
-	Oauth2DefaultClientID    string
-}
-
-// Config stores ginSwagger configuration variables.
-type Config struct {
-	// The url pointing to API definition (normally swagger.json or swagger.yaml). Default is `doc.json`.
-	URL                      string
-	DocExpansion             string
-	InstanceName             string
-	Title                    string
-	DefaultModelsExpandDepth int
-	DeepLinking              bool
-	PersistAuthorization     bool
-	Oauth2DefaultClientID    string
-}
-
-func (config Config) toSwaggerConfig() swaggerConfig {
-	return swaggerConfig{
-		URL:                      config.URL,
-		DeepLinking:              config.DeepLinking,
-		DocExpansion:             config.DocExpansion,
-		DefaultModelsExpandDepth: config.DefaultModelsExpandDepth,
-		Oauth2RedirectURL: "`${window.location.protocol}//${window.location.host}$" +
-			"{window.location.pathname.split('/').slice(0, window.location.pathname.split('/').length - 1).join('/')}" +
-			"/oauth2-redirect.html`",
-		Title:                 config.Title,
-		PersistAuthorization:  config.PersistAuthorization,
-		Oauth2DefaultClientID: config.Oauth2DefaultClientID,
-	}
-}
-
-// URL presents the url pointing to API definition (normally swagger.json or swagger.yaml).
-func URL(url string) func(*Config) {
-	return func(c *Config) {
-		c.URL = url
-	}
-}
-
-// DocExpansion list, full, none.
-func DocExpansion(docExpansion string) func(*Config) {
-	return func(c *Config) {
-		c.DocExpansion = docExpansion
-	}
-}
-
-// DeepLinking set the swagger deep linking configuration.
-func DeepLinking(deepLinking bool) func(*Config) {
-	return func(c *Config) {
-		c.DeepLinking = deepLinking
-	}
-}
-
-// DefaultModelsExpandDepth set the default expansion depth for models
-// (set to -1 completely hide the models).
-func DefaultModelsExpandDepth(depth int) func(*Config) {
-	return func(c *Config) {
-		c.DefaultModelsExpandDepth = depth
-	}
-}
-
-// InstanceName set the instance name that was used to generate the swagger documents
-// Defaults to swag.Name ("swagger").
-func InstanceName(name string) func(*Config) {
-	return func(c *Config) {
-		c.InstanceName = name
-	}
-}
-
-// PersistAuthorization Persist authorization information over browser close/refresh.
-// Defaults to false.
-func PersistAuthorization(persistAuthorization bool) func(*Config) {
-	return func(c *Config) {
-		c.PersistAuthorization = persistAuthorization
-	}
-}
-
-// Oauth2DefaultClientID set the default client ID used for OAuth2
-func Oauth2DefaultClientID(oauth2DefaultClientID string) func(*Config) {
-	return func(c *Config) {
-		c.Oauth2DefaultClientID = oauth2DefaultClientID
-	}
-}
-
-// WrapHandler wraps `http.Handler` into `gin.HandlerFunc`.
-func WrapHandler(handler *webdav.Handler, options ...func(*Config)) gin.HandlerFunc {
-	var config = Config{
-		URL:                      "doc.json",
-		DocExpansion:             "list",
-		InstanceName:             swag.Name,
-		Title:                    "Swagger UI",
-		DefaultModelsExpandDepth: 1,
-		DeepLinking:              true,
-		PersistAuthorization:     false,
-		Oauth2DefaultClientID:    "",
-	}
-
-	for _, c := range options {
-		c(&config)
-	}
-
-	return CustomWrapHandler(&config, handler)
-}
-
-// CustomWrapHandler wraps `http.Handler` into `gin.HandlerFunc`.
-func CustomWrapHandler(config *Config, handler *webdav.Handler) gin.HandlerFunc {
-	var once sync.Once
-
-	if config.InstanceName == "" {
-		config.InstanceName = swag.Name
-	}
-
-	if config.Title == "" {
-		config.Title = "Swagger UI"
-	}
-
-	// create a template with name
-	index, _ := htmlTemplate.New("swagger_index.html").Parse(swaggerIndexTpl)
-	js, _ := textTemplate.New("swagger_index.js").Parse(swaggerJSTpl)
-	css, _ := textTemplate.New("swagger_index.css").Parse(swaggerStyleTpl)
-
-	var matcher = regexp.MustCompile(`(.*)(index\.html|index\.css|swagger-initializer\.js|doc\.json|favicon-16x16\.png|favicon-32x32\.png|/oauth2-redirect\.html|swagger-ui\.css|swagger-ui\.css\.map|swagger-ui\.js|swagger-ui\.js\.map|swagger-ui-bundle\.js|swagger-ui-bundle\.js\.map|swagger-ui-standalone-preset\.js|swagger-ui-standalone-preset\.js\.map)[?|.]*`)
-
-	return func(ctx *gin.Context) {
-		if ctx.Request.Method != http.MethodGet {
-			ctx.AbortWithStatus(http.StatusMethodNotAllowed)
-
-			return
-		}
-
-		matches := matcher.FindStringSubmatch(ctx.Request.RequestURI)
-
-		if len(matches) != 3 {
-			ctx.String(http.StatusNotFound, http.StatusText(http.StatusNotFound))
-
-			return
-		}
-
-		path := matches[2]
-		once.Do(func() {
-			handler.Prefix = matches[1]
-		})
-
-		switch filepath.Ext(path) {
-		case ".html":
-			ctx.Header("Content-Type", "text/html; charset=utf-8")
-		case ".css":
-			ctx.Header("Content-Type", "text/css; charset=utf-8")
-		case ".js":
-			ctx.Header("Content-Type", "application/javascript")
-		case ".png":
-			ctx.Header("Content-Type", "image/png")
-		case ".json":
-			ctx.Header("Content-Type", "application/json; charset=utf-8")
-		}
-
-		switch path {
-		case "index.html":
-			_ = index.Execute(ctx.Writer, config.toSwaggerConfig())
-		case "index.css":
-			_ = css.Execute(ctx.Writer, config.toSwaggerConfig())
-		case "swagger-initializer.js":
-			_ = js.Execute(ctx.Writer, config.toSwaggerConfig())
-		case "doc.json":
-			doc, err := swag.ReadDoc(config.InstanceName)
-			if err != nil {
-				ctx.AbortWithStatus(http.StatusInternalServerError)
-
-				return
-			}
-
-			ctx.String(http.StatusOK, doc)
-		default:
-			handler.ServeHTTP(ctx.Writer, ctx.Request)
-		}
-	}
-}
-
-// DisablingWrapHandler turn handler off
-// if specified environment variable passed.
-func DisablingWrapHandler(handler *webdav.Handler, envName string) gin.HandlerFunc {
-	if os.Getenv(envName) != "" {
-		return func(c *gin.Context) {
-			// Simulate behavior when route unspecified and
-			// return 404 HTTP code
-			c.String(http.StatusNotFound, "")
-		}
-	}
-
-	return WrapHandler(handler)
-}
-
-// DisablingCustomWrapHandler turn handler off
-// if specified environment variable passed.
-func DisablingCustomWrapHandler(config *Config, handler *webdav.Handler, envName string) gin.HandlerFunc {
-	if os.Getenv(envName) != "" {
-		return func(c *gin.Context) {
-			// Simulate behavior when route unspecified and
-			// return 404 HTTP code
-			c.String(http.StatusNotFound, "")
-		}
-	}
-
-	return CustomWrapHandler(config, handler)
-}
-
-const swaggerStyleTpl = `
-html
-{
-    box-sizing: border-box;
-    overflow: -moz-scrollbars-vertical;
-    overflow-y: scroll;
-}
-*,
-*:before,
-*:after
-{
-    box-sizing: inherit;
-}
-
-body {
-  margin:0;
-  background: #fafafa;
-}
-`
-
-const swaggerJSTpl = `
-window.onload = function() {
-  // Build a system
-  const ui = SwaggerUIBundle({
-    url: "{{.URL}}",
-    dom_id: '#swagger-ui',
-    validatorUrl: null,
-    oauth2RedirectUrl: {{.Oauth2RedirectURL}},
-    persistAuthorization: {{.PersistAuthorization}},
-    presets: [
-      SwaggerUIBundle.presets.apis,
-      SwaggerUIStandalonePreset
-    ],
-    plugins: [
-      SwaggerUIBundle.plugins.DownloadUrl
-    ],
-	layout: "StandaloneLayout",
-    docExpansion: "{{.DocExpansion}}",
-	deepLinking: {{.DeepLinking}},
-	defaultModelsExpandDepth: {{.DefaultModelsExpandDepth}}
-  })
-
-  const defaultClientId = "{{.Oauth2DefaultClientID}}";
-  if (defaultClientId) {
-    ui.initOAuth({
-      clientId: defaultClientId
-    })
-  }
-
-  window.ui = ui
-}
-`
-
-const swaggerIndexTpl = `<!-- HTML for static distribution bundle build -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>{{.Title}}</title>
-  <link rel="stylesheet" type="text/css" href="./swagger-ui.css" >
-  <link rel="icon" type="image/png" href="./favicon-32x32.png" sizes="32x32" />
-  <link rel="icon" type="image/png" href="./favicon-16x16.png" sizes="16x16" />
-  <link rel="stylesheet" type="text/css" href="index.css" />
-</head>
-
-<body>
-
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="position:absolute;width:0;height:0">
-  <defs>
-    <symbol viewBox="0 0 20 20" id="unlocked">
-          <path d="M15.8 8H14V5.6C14 2.703 12.665 1 10 1 7.334 1 6 2.703 6 5.6V6h2v-.801C8 3.754 8.797 3 10 3c1.203 0 2 .754 2 2.199V8H4c-.553 0-1 .646-1 1.199V17c0 .549.428 1.139.951 1.307l1.197.387C5.672 18.861 6.55 19 7.1 19h5.8c.549 0 1.428-.139 1.951-.307l1.196-.387c.524-.167.953-.757.953-1.306V9.199C17 8.646 16.352 8 15.8 8z"></path>
-    </symbol>
-
-    <symbol viewBox="0 0 20 20" id="locked">
-      <path d="M15.8 8H14V5.6C14 2.703 12.665 1 10 1 7.334 1 6 2.703 6 5.6V8H4c-.553 0-1 .646-1 1.199V17c0 .549.428 1.139.951 1.307l1.197.387C5.672 18.861 6.55 19 7.1 19h5.8c.549 0 1.428-.139 1.951-.307l1.196-.387c.524-.167.953-.757.953-1.306V9.199C17 8.646 16.352 8 15.8 8zM12 8H8V5.199C8 3.754 8.797 3 10 3c1.203 0 2 .754 2 2.199V8z"/>
-    </symbol>
-
-    <symbol viewBox="0 0 20 20" id="close">
-      <path d="M14.348 14.849c-.469.469-1.229.469-1.697 0L10 11.819l-2.651 3.029c-.469.469-1.229.469-1.697 0-.469-.469-.469-1.229 0-1.697l2.758-3.15-2.759-3.152c-.469-.469-.469-1.228 0-1.697.469-.469 1.228-.469 1.697 0L10 8.183l2.651-3.031c.469-.469 1.228-.469 1.697 0 .469.469.469 1.229 0 1.697l-2.758 3.152 2.758 3.15c.469.469.469 1.229 0 1.698z"/>
-    </symbol>
-
-    <symbol viewBox="0 0 20 20" id="large-arrow">
-      <path d="M13.25 10L6.109 2.58c-.268-.27-.268-.707 0-.979.268-.27.701-.27.969 0l7.83 7.908c.268.271.268.709 0 .979l-7.83 7.908c-.268.271-.701.27-.969 0-.268-.269-.268-.707 0-.979L13.25 10z"/>
-    </symbol>
-
-    <symbol viewBox="0 0 20 20" id="large-arrow-down">
-      <path d="M17.418 6.109c.272-.268.709-.268.979 0s.271.701 0 .969l-7.908 7.83c-.27.268-.707.268-.979 0l-7.908-7.83c-.27-.268-.27-.701 0-.969.271-.268.709-.268.979 0L10 13.25l7.418-7.141z"/>
-    </symbol>
-
-
-    <symbol viewBox="0 0 24 24" id="jump-to">
-      <path d="M19 7v4H5.83l3.58-3.59L8 6l-6 6 6 6 1.41-1.41L5.83 13H21V7z"/>
-    </symbol>
-
-    <symbol viewBox="0 0 24 24" id="expand">
-      <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
-    </symbol>
-
-  </defs>
-</svg>
-
-<div id="swagger-ui"></div>
-
-<script src="./swagger-ui-bundle.js"> </script>
-<script src="./swagger-ui-standalone-preset.js"> </script>
-<script src="./swagger-initializer.js"> </script>
-</body>
-
-</html>
-`
+github.com/gin-gonic/gin v1.8.1/go.mod h1:ji8BvRH1azfM+SYow9zQ6SZMvR8qOMZHmsCuWR9tTTk=
+github.com/gin-gonic/gin v1.9.0 h1:OjyFBKICoexlu99ctXNR2gg+c5pKrKMuyjgARg9qeY8=
+github.com/gin-gonic/gin v1.9.0/go.mod h1:W1Me9+hsUSyj3CePGrd1/QrKJMSJ1Tu/0hFEH89961k=
+github.com/go-openapi/jsonpointer v0.19.3/go.mod h1:Pl9vOtqEWErmShwVjC8pYs9cog34VGT37dQOVbmoatg=
+github.com/go-openapi/jsonpointer v0.19.5 h1:gZr+CIYByUqjcgeLXnQu2gHYQC9o73G2XUeOFYEICuY=
+github.com/go-openapi/jsonpointer v0.19.5/go.mod h1:Pl9vOtqEWErmShwVjC8pYs9cog34VGT37dQOVbmoatg=
+github.com/go-openapi/jsonreference v0.19.6 h1:UBIxjkht+AWIgYzCDSv2GN+E/togfwXUJFRTWhl2Jjs=
+github.com/go-openapi/jsonreference v0.19.6/go.mod h1:diGHMEHg2IqXZGKxqyvWdfWU/aim5Dprw5bqpKkTvns=
+github.com/go-openapi/spec v0.20.4 h1:O8hJrt0UMnhHcluhIdUgCLRWyM2x7QkBXRvOs7m+O1M=
+github.com/go-openapi/spec v0.20.4/go.mod h1:faYFR1CvsJZ0mNsmsphTMSoRrNV3TEDoAM7FOEWeq8I=
+github.com/go-openapi/swag v0.19.5/go.mod h1:POnQmlKehdgb5mhVOsnJFsivZCEZ/vjK9gh66Z9tfKk=
+github.com/go-openapi/swag v0.19.15 h1:D2NRCBzS9/pEY3gP9Nl8aDqGUcPFrwG2p+CNFrLyrCM=
+github.com/go-openapi/swag v0.19.15/go.mod h1:QYRuS/SOXUCsnplDa677K7+DxSOj6IPNl/eQntq43wQ=
+github.com/go-playground/assert/v2 v2.0.1/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
+github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=
+github.com/go-playground/assert/v2 v2.2.0/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
+github.com/go-playground/locales v0.14.0/go.mod h1:sawfccIbzZTqEDETgFXqTho0QybSa7l++s0DH+LDiLs=
+github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=
+github.com/go-playground/locales v0.14.1/go.mod h1:hxrqLVvrK65+Rwrd5Fc6F2O76J/NuW9t0sjnWqG1slY=
+github.com/go-playground/universal-translator v0.18.0/go.mod h1:UvRDBj+xPUEGrFYl+lu/H90nyDXpg0fqeB/AQUGNTVA=
+github.com/go-playground/universal-translator v0.18.1 h1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=
+github.com/go-playground/universal-translator v0.18.1/go.mod h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY=
+github.com/go-playground/validator/v10 v10.10.0/go.mod h1:74x4gJWsvQexRdW8Pn3dXSGrTK4nAUsbPlLADvpJkos=
+github.com/go-playground/validator/v10 v10.11.2 h1:q3SHpufmypg+erIExEKUmsgmhDTyhcJ38oeKGACXohU=
+github.com/go-playground/validator/v10 v10.11.2/go.mod h1:NieE624vt4SCTJtD87arVLvdmjPAeV8BQlHtMnw9D7s=
+github.com/goccy/go-json v0.9.7/go.mod h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MGFi0w8I=
+github.com/goccy/go-json v0.10.0 h1:mXKd9Qw4NuzShiRlOXKews24ufknHO7gx30lsDyokKA=
+github.com/goccy/go-json v0.10.0/go.mod h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MGFi0w8I=
+github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
+github.com/google/go-cmp v0.5.5 h1:Khx7svrCpmxxtHBq5j2mp/xVjsi8hQMfNLvJFAlrGgU=
+github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
+github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
+github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
+github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
+github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
+github.com/klauspost/cpuid/v2 v2.0.9 h1:lgaqFMSdTdQYdZ04uHyN2d/eKdOMyi2YLSvlQIBFYa4=
+github.com/klauspost/cpuid/v2 v2.0.9/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
+github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
+github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
+github.com/kr/pretty v0.3.0 h1:WgNl7dwNpEZ6jJ9k1snq4pZsg7DOEN8hP9Xw0Tsjwk0=
+github.com/kr/pretty v0.3.0/go.mod h1:640gp4NfQd8pI5XOwp5fnNeVWj67G7CFk/SaSQn7NBk=
+github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
+github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
