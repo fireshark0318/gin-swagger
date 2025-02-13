@@ -1,15 +1,12 @@
 module github.com/swaggo/gin-swagger
 
-require (
-	github.com/gin-contrib/gzip v0.0.1
-	github.com/gin-gonic/gin v1.7.0
-	github.com/kr/pretty v0.1.0 // indirect
-	github.com/stretchr/testify v1.4.0
-	github.com/swaggo/files v0.0.0-20190704085106-630677cd5c14
-	github.com/swaggo/swag v1.5.1
-	golang.org/x/net v0.0.0-20190611141213-3f473d35a33a
-	golang.org/x/tools v0.0.0-20190611222205-d73e1c7e250b // indirect
-	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
-)
+go 1.15
 
-go 1.13
+require (
+	github.com/gin-contrib/gzip v0.0.6
+	github.com/gin-gonic/gin v1.8.1
+	github.com/stretchr/testify v1.8.0
+	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe
+	github.com/swaggo/swag v1.8.1
+	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
+)
