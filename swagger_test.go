@@ -1,256 +1,78 @@
-package ginSwagger
-
-import (
-	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"testing"
-
-	"github.com/gin-contrib/gzip"
-	"github.com/swaggo/swag"
-
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/assert"
-	swaggerFiles "github.com/swaggo/files"
-)
-
-type mockedSwag struct{}
-
-func (s *mockedSwag) ReadDoc() string {
-	return `{
-}`
-}
-
-func TestWrapHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-
-	router.GET("/*any", WrapHandler(swaggerFiles.Handler, URL("https://github.com/swaggo/gin-swagger")))
-
-	assert.Equal(t, http.StatusOK, performRequest("GET", "/index.html", router).Code)
-}
-
-func TestWrapCustomHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-
-	router.Any("/*any", CustomWrapHandler(&Config{}, swaggerFiles.Handler))
-
-	w1 := performRequest(http.MethodGet, "/index.html", router)
-	assert.Equal(t, http.StatusOK, w1.Code)
-	assert.Equal(t, w1.Header()["Content-Type"][0], "text/html; charset=utf-8")
-
-	assert.Equal(t, http.StatusInternalServerError, performRequest(http.MethodGet, "/doc.json", router).Code)
-
-	doc := &mockedSwag{}
-	swag.Register(swag.Name, doc)
-
-	w2 := performRequest(http.MethodGet, "/doc.json", router)
-	assert.Equal(t, http.StatusOK, w2.Code)
-	assert.Equal(t, w2.Header()["Content-Type"][0], "application/json; charset=utf-8")
-
-	// Perform body rendering validation
-	w2Body, err := ioutil.ReadAll(w2.Body)
-	assert.NoError(t, err)
-	assert.Equal(t, doc.ReadDoc(), string(w2Body))
-
-	w3 := performRequest(http.MethodGet, "/favicon-16x16.png", router)
-	assert.Equal(t, http.StatusOK, w3.Code)
-	assert.Equal(t, w3.Header()["Content-Type"][0], "image/png")
-
-	w4 := performRequest(http.MethodGet, "/swagger-ui.css", router)
-	assert.Equal(t, http.StatusOK, w4.Code)
-	assert.Equal(t, w4.Header()["Content-Type"][0], "text/css; charset=utf-8")
-
-	w5 := performRequest(http.MethodGet, "/swagger-ui-bundle.js", router)
-	assert.Equal(t, http.StatusOK, w5.Code)
-	assert.Equal(t, w5.Header()["Content-Type"][0], "application/javascript")
-
-	w6 := performRequest(http.MethodGet, "/index.css", router)
-	assert.Equal(t, http.StatusOK, w6.Code)
-	assert.Equal(t, w6.Header()["Content-Type"][0], "text/css; charset=utf-8")
-
-	w7 := performRequest(http.MethodGet, "/swagger-initializer.js", router)
-	assert.Equal(t, http.StatusOK, w7.Code)
-	assert.Equal(t, w7.Header()["Content-Type"][0], "application/javascript")
-
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/notfound", router).Code)
-
-	assert.Equal(t, http.StatusMethodNotAllowed, performRequest(http.MethodPost, "/index.html", router).Code)
-
-	assert.Equal(t, http.StatusMethodNotAllowed, performRequest(http.MethodPut, "/index.html", router).Code)
-}
-
-func TestDisablingWrapHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	router := gin.New()
-	disablingKey := "SWAGGER_DISABLE"
-
-	router.GET("/simple/*any", DisablingWrapHandler(swaggerFiles.Handler, disablingKey))
-
-	assert.Equal(t, http.StatusOK, performRequest(http.MethodGet, "/simple/index.html", router).Code)
-	assert.Equal(t, http.StatusOK, performRequest(http.MethodGet, "/simple/doc.json", router).Code)
-
-	assert.Equal(t, http.StatusOK, performRequest(http.MethodGet, "/simple/favicon-16x16.png", router).Code)
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/simple/notfound", router).Code)
-
-	_ = os.Setenv(disablingKey, "true")
-
-	router.GET("/disabling/*any", DisablingWrapHandler(swaggerFiles.Handler, disablingKey))
-
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/index.html", router).Code)
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/doc.json", router).Code)
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/oauth2-redirect.html", router).Code)
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/notfound", router).Code)
-}
-
-func TestDisablingCustomWrapHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	router := gin.New()
-	disablingKey := "SWAGGER_DISABLE2"
-
-	router.GET("/simple/*any", DisablingCustomWrapHandler(&Config{}, swaggerFiles.Handler, disablingKey))
-
-	assert.Equal(t, http.StatusOK, performRequest(http.MethodGet, "/simple/index.html", router).Code)
-
-	_ = os.Setenv(disablingKey, "true")
-
-	router.GET("/disabling/*any", DisablingCustomWrapHandler(&Config{}, swaggerFiles.Handler, disablingKey))
-
-	assert.Equal(t, http.StatusNotFound, performRequest(http.MethodGet, "/disabling/index.html", router).Code)
-}
-
-func TestWithGzipMiddleware(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-
-	router.Use(gzip.Gzip(gzip.BestSpeed))
-
-	router.GET("/*any", WrapHandler(swaggerFiles.Handler))
-
-	w1 := performRequest(http.MethodGet, "/index.html", router)
-	assert.Equal(t, http.StatusOK, w1.Code)
-	assert.Equal(t, w1.Header()["Content-Type"][0], "text/html; charset=utf-8")
-
-	w2 := performRequest(http.MethodGet, "/swagger-ui.css", router)
-	assert.Equal(t, http.StatusOK, w2.Code)
-	assert.Equal(t, w2.Header()["Content-Type"][0], "text/css; charset=utf-8")
-
-	w3 := performRequest(http.MethodGet, "/swagger-ui-bundle.js", router)
-	assert.Equal(t, http.StatusOK, w3.Code)
-	assert.Equal(t, w3.Header()["Content-Type"][0], "application/javascript")
-
-	w4 := performRequest(http.MethodGet, "/doc.json", router)
-	assert.Equal(t, http.StatusOK, w4.Code)
-	assert.Equal(t, w4.Header()["Content-Type"][0], "application/json; charset=utf-8")
-}
-
-func performRequest(method, target string, router *gin.Engine) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(method, target, nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, r)
-	return w
-}
-
-func TestURL(t *testing.T) {
-	cfg := Config{}
-
-	expected := "https://github.com/swaggo/http-swagger"
-	configFunc := URL(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.URL)
-}
-
-func TestDocExpansion(t *testing.T) {
-	var cfg Config
-
-	expected := "list"
-	configFunc := DocExpansion(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.DocExpansion)
-
-	expected = "full"
-	configFunc = DocExpansion(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.DocExpansion)
-
-	expected = "none"
-	configFunc = DocExpansion(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.DocExpansion)
-}
-
-func TestDeepLinking(t *testing.T) {
-	var cfg Config
-	assert.Equal(t, false, cfg.DeepLinking)
-
-	configFunc := DeepLinking(true)
-	configFunc(&cfg)
-	assert.Equal(t, true, cfg.DeepLinking)
-
-	configFunc = DeepLinking(false)
-	configFunc(&cfg)
-	assert.Equal(t, false, cfg.DeepLinking)
-
-}
-
-func TestDefaultModelsExpandDepth(t *testing.T) {
-	var cfg Config
-
-	assert.Equal(t, 0, cfg.DefaultModelsExpandDepth)
-
-	expected := -1
-	configFunc := DefaultModelsExpandDepth(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.DefaultModelsExpandDepth)
-
-	expected = 1
-	configFunc = DefaultModelsExpandDepth(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.DefaultModelsExpandDepth)
-}
-
-func TestInstanceName(t *testing.T) {
-	var cfg Config
-
-	assert.Equal(t, "", cfg.InstanceName)
-
-	expected := swag.Name
-	configFunc := InstanceName(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.InstanceName)
-
-	expected = "custom_name"
-	configFunc = InstanceName(expected)
-	configFunc(&cfg)
-	assert.Equal(t, expected, cfg.InstanceName)
-}
-
-func TestPersistAuthorization(t *testing.T) {
-	var cfg Config
-	assert.Equal(t, false, cfg.PersistAuthorization)
-
-	configFunc := PersistAuthorization(true)
-	configFunc(&cfg)
-	assert.Equal(t, true, cfg.PersistAuthorization)
-
-	configFunc = PersistAuthorization(false)
-	configFunc(&cfg)
-	assert.Equal(t, false, cfg.PersistAuthorization)
-}
-
-func TestOauth2DefaultClientID(t *testing.T) {
-	var cfg Config
-	assert.Equal(t, "", cfg.Oauth2DefaultClientID)
-
-	configFunc := Oauth2DefaultClientID("default_client_id")
-	configFunc(&cfg)
-	assert.Equal(t, "default_client_id", cfg.Oauth2DefaultClientID)
-
-	configFunc = Oauth2DefaultClientID("")
-	configFunc(&cfg)
-	assert.Equal(t, "", cfg.Oauth2DefaultClientID)
-}
+github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
+github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
+github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
+github.com/PuerkitoBio/purell v1.1.1 h1:WEQqlqaGbrPkxLJWfBwQmfEAE1Z7ONdDLqrN38tNFfI=
+github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
+github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 h1:d+Bc7a5rLufV/sSk/8dngufqelfh6jnri85riMAaF/M=
+github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
+github.com/bytedance/sonic v1.5.0/go.mod h1:ED5hyg4y6t3/9Ku1R6dU/4KyJ48DZ4jPhfY1O2AihPM=
+github.com/bytedance/sonic v1.9.1 h1:6iJ6NqdoxCDr6mbY8h18oSO+cShGSMRGCEo7F2h0x8s=
+github.com/bytedance/sonic v1.9.1/go.mod h1:i736AoUSYt75HyZLoJW9ERYxcy6eaN6h4BZXU064P/U=
+github.com/chenzhuoyu/base64x v0.0.0-20211019084208-fb5309c8db06/go.mod h1:DH46F32mSOjUmXrMHnKwZdA8wcEefY7UVqBKYGjpdQY=
+github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 h1:qSGYFH7+jGhDF8vLC+iwCD4WpbV1EBDSzWkJODFLams=
+github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311/go.mod h1:b583jCggY9gE99b6G5LEC39OIiVsWj+R97kbl5odCEk=
+github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
+github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
+github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/gabriel-vasile/mimetype v1.4.2 h1:w5qFW6JKBz9Y393Y4q372O9A7cUSequkh1Q7OhCmWKU=
+github.com/gabriel-vasile/mimetype v1.4.2/go.mod h1:zApsH/mKG4w07erKIaJPFiX0Tsq9BFQgN3qGY5GnNgA=
+github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
+github.com/gin-contrib/gzip v0.0.6 h1:NjcunTcGAj5CO1gn4N8jHOSIeRFHIbn51z6K+xaN4d4=
+github.com/gin-contrib/gzip v0.0.6/go.mod h1:QOJlmV2xmayAjkNS2Y8NQsMneuRShOU/kjovCXNuzzk=
+github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
+github.com/gin-contrib/sse v0.1.0/go.mod h1:RHrZQHXnP2xjPF+u1gW/2HnVO7nvIa9PG3Gm+fLHvGI=
+github.com/gin-gonic/gin v1.8.1/go.mod h1:ji8BvRH1azfM+SYow9zQ6SZMvR8qOMZHmsCuWR9tTTk=
+github.com/gin-gonic/gin v1.9.1 h1:4idEAncQnU5cB7BeOkPtxjfCSye0AAm1R0RVIqJ+Jmg=
+github.com/gin-gonic/gin v1.9.1/go.mod h1:hPrL7YrpYKXt5YId3A/Tnip5kqbEAP+KLuI3SUcPTeU=
+github.com/go-openapi/jsonpointer v0.19.3/go.mod h1:Pl9vOtqEWErmShwVjC8pYs9cog34VGT37dQOVbmoatg=
+github.com/go-openapi/jsonpointer v0.19.5 h1:gZr+CIYByUqjcgeLXnQu2gHYQC9o73G2XUeOFYEICuY=
+github.com/go-openapi/jsonpointer v0.19.5/go.mod h1:Pl9vOtqEWErmShwVjC8pYs9cog34VGT37dQOVbmoatg=
+github.com/go-openapi/jsonreference v0.19.6 h1:UBIxjkht+AWIgYzCDSv2GN+E/togfwXUJFRTWhl2Jjs=
+github.com/go-openapi/jsonreference v0.19.6/go.mod h1:diGHMEHg2IqXZGKxqyvWdfWU/aim5Dprw5bqpKkTvns=
+github.com/go-openapi/spec v0.20.4 h1:O8hJrt0UMnhHcluhIdUgCLRWyM2x7QkBXRvOs7m+O1M=
+github.com/go-openapi/spec v0.20.4/go.mod h1:faYFR1CvsJZ0mNsmsphTMSoRrNV3TEDoAM7FOEWeq8I=
+github.com/go-openapi/swag v0.19.5/go.mod h1:POnQmlKehdgb5mhVOsnJFsivZCEZ/vjK9gh66Z9tfKk=
+github.com/go-openapi/swag v0.19.15 h1:D2NRCBzS9/pEY3gP9Nl8aDqGUcPFrwG2p+CNFrLyrCM=
+github.com/go-openapi/swag v0.19.15/go.mod h1:QYRuS/SOXUCsnplDa677K7+DxSOj6IPNl/eQntq43wQ=
+github.com/go-playground/assert/v2 v2.0.1/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
+github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=
+github.com/go-playground/assert/v2 v2.2.0/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
+github.com/go-playground/locales v0.14.0/go.mod h1:sawfccIbzZTqEDETgFXqTho0QybSa7l++s0DH+LDiLs=
+github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=
+github.com/go-playground/locales v0.14.1/go.mod h1:hxrqLVvrK65+Rwrd5Fc6F2O76J/NuW9t0sjnWqG1slY=
+github.com/go-playground/universal-translator v0.18.0/go.mod h1:UvRDBj+xPUEGrFYl+lu/H90nyDXpg0fqeB/AQUGNTVA=
+github.com/go-playground/universal-translator v0.18.1 h1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=
+github.com/go-playground/universal-translator v0.18.1/go.mod h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY=
+github.com/go-playground/validator/v10 v10.10.0/go.mod h1:74x4gJWsvQexRdW8Pn3dXSGrTK4nAUsbPlLADvpJkos=
+github.com/go-playground/validator/v10 v10.14.0 h1:vgvQWe3XCz3gIeFDm/HnTIbj6UGmg/+t63MyGU2n5js=
+github.com/go-playground/validator/v10 v10.14.0/go.mod h1:9iXMNT7sEkjXb0I+enO7QXmzG6QCsPWY4zveKFVRSyU=
+github.com/goccy/go-json v0.9.7/go.mod h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MGFi0w8I=
+github.com/goccy/go-json v0.10.2 h1:CrxCmQqYDkv1z7lO7Wbh2HN93uovUHgrECaO5ZrCXAU=
+github.com/goccy/go-json v0.10.2/go.mod h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MGFi0w8I=
+github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
+github.com/google/go-cmp v0.5.5 h1:Khx7svrCpmxxtHBq5j2mp/xVjsi8hQMfNLvJFAlrGgU=
+github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
+github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
+github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
+github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
+github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
+github.com/klauspost/cpuid/v2 v2.0.9/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
+github.com/klauspost/cpuid/v2 v2.2.4 h1:acbojRNwl3o09bUq+yDCtZFc1aiwaAAxtcn8YkZXnvk=
+github.com/klauspost/cpuid/v2 v2.2.4/go.mod h1:RVVoqg1df56z8g3pUjL/3lE5UfnlrJX8tyFgg4nqhuY=
+github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
+github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
+github.com/kr/pretty v0.3.0 h1:WgNl7dwNpEZ6jJ9k1snq4pZsg7DOEN8hP9Xw0Tsjwk0=
+github.com/kr/pretty v0.3.0/go.mod h1:640gp4NfQd8pI5XOwp5fnNeVWj67G7CFk/SaSQn7NBk=
+github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
+github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
+github.com/leodido/go-urn v1.2.1/go.mod h1:zt4jvISO2HfUBqxjfIshjdMTYS56ZS/qv49ictyFfxY=
+github.com/leodido/go-urn v1.2.4 h1:XlAE/cm/ms7TE/VMVoduSpNBoyc2dOxHs5MZSwAN63Q=
+github.com/leodido/go-urn v1.2.4/go.mod h1:7ZrI8mTSeBSHl/UaRyKQW1qZeMgak41ANeCNaVckg+4=
+github.com/mailru/easyjson v0.0.0-20190614124828-94de47d64c63/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
+github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
+github.com/mailru/easyjson v0.7.6 h1:8yTIVnZgCoiM1TgqoeTl+LfU5Jg6/xL3QhGQnimLYnA=
