@@ -8,6 +8,7 @@ gin middleware to automatically generate RESTful API documentation with Swagger 
 [![GoDoc](https://godoc.org/github.com/swaggo/gin-swagger?status.svg)](https://godoc.org/github.com/swaggo/gin-swagger)
 [![Release](https://img.shields.io/github/release/swaggo/gin-swagger.svg?style=flat-square)](https://github.com/swaggo/gin-swagger/releases)
 
+
 ## Usage
 
 ### Start using it
@@ -22,12 +23,12 @@ go get -u github.com/swaggo/swag/cmd/swag
 Starting in Go 1.17, installing executables with `go get` is deprecated. `go install` may be used instead:
 
 ```sh
-go install github.com/swaggo/swag/cmd/swag@latest
+go install github.com/swaggo/swag/cmd/swag
 ```
 
-3. Run the [Swag](https://github.com/swaggo/swag) at your Go project root path(for instance `~/root/go-project-name`),
+3. Run the [Swag](https://github.com/swaggo/swag) at your Go project root path(for instance `~/root/go-peoject-name`),
    [Swag](https://github.com/swaggo/swag) will parse comments and generate required files(`docs` folder and `docs/doc.go`)
-   at `~/root/go-project-name/docs`.
+   at `~/root/go-peoject-name/docs`.
 
 ```sh
 swag init
@@ -150,7 +151,6 @@ Demo project tree, `swag init` is run at relative `.`
 ```
 
 ## Multiple APIs
-
 This feature was introduced in swag v1.7.9
 
 ## Configuration
@@ -161,7 +161,7 @@ You can configure Swagger using different configuration options
 func main() {
 	r := gin.New()
 
-	ginSwagger.WrapHandler(swaggerfiles.Handler,
+	ginSwagger.WrapHandler(swaggerFiles.Handler,
 		ginSwagger.URL("http://localhost:8080/swagger/doc.json"),
 		ginSwagger.DefaultModelsExpandDepth(-1))
 
@@ -176,5 +176,5 @@ func main() {
 | DeepLinking              | bool   | true       | If set to true, enables deep linking for tags and operations. See the Deep Linking documentation for more information.                                                                                                                                    |
 | DefaultModelsExpandDepth | int    | 1          | Default expansion depth for models (set to -1 completely hide the models).                                                                                                                                                                                |
 | InstanceName             | string | "swagger"  | The instance name of the swagger document. If multiple different swagger instances should be deployed on one gin router, ensure that each instance has a unique name (use the _--instanceName_ parameter to generate swagger documents with _swag init_). |
-| PersistAuthorization     | bool   | false      | If set to true, it persists authorization data and it would not be lost on browser close/refresh.                                                                                                                                                         |
-| Oauth2DefaultClientID    | string | ""         | If set, it's used to prepopulate the _client_id_ field of the OAuth2 Authorization dialog.                                                                                                                                                                |
+| PersistAuthorization     | bool   | false      | If set to true, it persists authorization data and it would not be lost on browser close/refresh.                                                                                                                                                         |                                                                                            
+| Oauth2DefaultClientID    | string | ""         | If set, it's used to prepopulate the *client_id* field of the OAuth2 Authorization dialog.                                                                                                                                                                |
